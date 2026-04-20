@@ -131,6 +131,146 @@ Result: 250
     首次发送邮件，可以先发送给自己的邮箱，检查能否正常发送。有些开源社区邮件列表，第一次向其发
     邮件，社区需要审核，如果没有在邮件列表中看到自己的邮件，请耐心等待一下。
 
+## 补丁 Tag 规范与自动化工具
+
+在开源社区协作中，补丁（patch）的 commit message 末尾通常会附带一组特殊的“标签”
+（Trailers / Tags），用于记录补丁在审查、测试、合并过程中的参与者与状态变化。这些标签是社区
+协作的“签名链”，对于追溯责任、维护补丁质量至关重要。
+
+### 常见 Tag 规则
+
+以下是 Linux Kernel、QEMU 等社区常用的补丁标签：
+
+| Tag | 含义 | 使用场景 |
+| --- | --- | --- |
+| `Signed-off-by:` | 开发者担保（DCO），表示你有权提交此代码 | 必须由作者和每个转发者添加 |
+| `Reviewed-by:` | 代码审查者认为该补丁正确 | 审查者 review 通过后在邮件中明确提供 |
+| `Acked-by:` | 维护者/子系统负责人认可合并 | 由相关子系统 maintainer 在回复中提供 |
+| `Tested-by:` | 测试者验证该补丁有效 | 他人测试通过后在邮件中明确提供 |
+| `Reported-by:` | 问题最初的报告者 | 用于修复 Bug 时致谢报告者 |
+| `Suggested-by:` | 方案建议者 | 若思路源自他人讨论 |
+| `Co-developed-by:` | 共同开发者 | 必须与对应的 `Signed-off-by:` 配对出现 |
+| `Fixes:` | 修复的旧补丁 commit | 格式 `Fixes: <sha12> ("subject")` |
+| `Cc:` | 邮件抄送对象 | 希望其关注的人员 |
+| `Link:` | 相关讨论链接 | 例如 lore.kernel.org 的讨论链接 |
+
+这些标签放在 commit message 末尾的 trailer 区域，每个标签独占一行，标签之间不能有空行分隔。
+例如：
+
+```text
+e1000e: Prevent crash from legacy interrupt firing after MSI-X enable
+
+When MSI-X is enabled after legacy interrupt ...
+
+Reported-by: Alice <alice@example.com>
+Suggested-by: Bob <bob@example.com>
+Signed-off-by: You <you@example.com>
+Reviewed-by: Charlie <charlie@example.com>
+Tested-by: Dave <dave@example.com>
+```
+
+!!! tip "顺序约定"
+
+    一般约定 `Signed-off-by:` 按补丁流转顺序排列（作者在最前），其他 tag（如 `Reviewed-by`、
+    `Tested-by`）放在对应 `Signed-off-by` 之后。`Fixes:` 通常放在正文说明之后、trailer 区域
+    的开头。
+
+### 手动添加标签
+
+最直接的方式是使用 `git commit --amend` 或 `git rebase -i` 手动编辑 commit message，把
+他人在邮件列表中回复的 tag 粘贴进去。但当一个补丁系列（patch series）有几十封邮件、几十个
+`Reviewed-by` 时，手动整理非常繁琐且易出错。
+
+### 自动化工具：b4
+
+[b4](https://b4.docs.kernel.org/) 是 Linux Kernel 社区官方推荐的补丁管理工具。它可以从
+lore.kernel.org 等公开存档中抓取补丁系列与讨论线程，并围绕“准备补丁 — 汇总 tag — 发送补丁”
+的工作流，提供多条便捷命令。
+
+安装：
+
+```bash
+pip install b4
+# 或在较新的发行版上：
+sudo apt install b4
+```
+
+常用命令：
+
+```bash
+# 【应用他人补丁】从 lore 拉取某个 message-id 对应的补丁系列，生成可供 git am 使用的 mbox。
+# 邮件线程中他人回复的 Reviewed-by / Tested-by 等 tag 会被汇总写入 mbox 的 commit message，
+# 但并不会修改你当前分支已有的 commit。典型用于 maintainer 把投递上来的补丁应用到自己分支。
+b4 am <message-id-or-lore-url>
+
+# 【更新本地补丁的 tag】作为贡献者投递了一版补丁后，收到 Reviewed-by / Tested-by 等回复时，
+# 准备 v2 前切回该补丁对应的本地分支运行下列命令。b4 会抓取 lore 上的回复，把新增的 trailer
+# 追加到本地对应的 commit message 中，从而避免手工整理，也避免遗漏：
+b4 trailers -u
+
+# 【准备并发送自己的补丁系列】完整的贡献者发送流程，推荐按顺序执行：
+# 1) 基于当前分支创建补丁系列工作分支（后续命令默认作用于该分支）
+b4 prep -n <branch-name>
+# 2) 编辑 cover letter，替换其中的 EDITME 占位内容
+b4 prep --edit-cover
+# 3) 自动填充 To/Cc 收件人（内部会调用 get_maintainer.pl 等工具）
+b4 prep --auto-to-cc
+# 4) 送检：对补丁本身执行 checkpatch.pl 等检查，及时修正格式问题
+b4 prep --check
+# 5) 正式通过 git send-email 发送补丁系列
+b4 send
+```
+
+!!! note "两种使用场景区分"
+
+    - `b4 am` 作用于 **mbox 输出**，适合 maintainer 把他人投递的补丁应用到自己的分支，它
+      **不会**修改你当前分支上已有的 commit；
+    - 作为 **贡献者**准备下一版补丁（如 v2）时，应使用 `b4 trailers -u` 把他人回复中的 tag
+      合并到 **本地已有的** commit 上，而不是重新 `b4 am`。
+
+!!! warning "发送前务必完成预检"
+
+    直接 `b4 prep -n` 后 `b4 send` 会带着**未填写的 cover letter**（含 `EDITME` 占位符）
+    和**空的收件人列表**把补丁发出去，常常导致邮件被社区忽略或被邮件列表拒收。请确保在
+    `b4 send` 之前依次完成 `--edit-cover`、`--auto-to-cc`、`--check` 三步。
+
+### 自动化工具：patman
+
+[patman](https://docs.u-boot.org/en/latest/develop/patman.html) 源自 U-Boot 社区，也被
+其他项目采用。它从 commit message 中解析特殊标记（如 `Series-to:`、`Cc:` 等），自动生成
+补丁、cover letter，并调用 `git send-email` 发送。
+
+常用命令：
+
+```bash
+# 预览（-n 表示 dry-run，不实际发送）
+patman send -n
+
+# 实际发送
+patman send
+```
+
+patman 还能抓取之前版本补丁收到的 review tag 自动延续到新版本补丁中，减少重复劳动。
+
+!!! warning "重要礼仪：不要替他人添加 tag"
+
+    `Reviewed-by:`、`Tested-by:`、`Acked-by:` 等 tag **必须**由本人在邮件列表中明确回复
+    （即对方亲自写出 `Reviewed-by: Name <email>` 这一行）之后，作者才能将其加入 commit
+    message。
+
+    未经同意替别人加 tag，在社区属于严重失礼，甚至可能被视为伪造背书。正确做法是等对方在邮件
+    中明确签名，再收录到下一版补丁。使用 `b4` / `patman` 这类工具的好处之一，就是它们**只会**
+    识别真实邮件里出现过的 tag，既避免遗漏、也避免“代签”。
+
+    例外：`Signed-off-by:` 是唯一可以（且必须）由你自己为自己添加的 tag，代表你对所提交代码
+    的 DCO（Developer Certificate of Origin）声明。
+
+### 小结
+
+- 对于 Linux Kernel、QEMU 等使用 lore 存档的社区，优先推荐 `b4`；
+- 对于 U-Boot 及其他项目，`patman` 是成熟选择；
+- 对于少量补丁，手动维护 trailer 亦可，但务必保证格式正确、顺序合理，**且绝不替他人加 tag**。
+
 ## 回复邮件
 
 **手动回复邮件**
@@ -272,3 +412,9 @@ Be sure your reply has a Subject: header at the top and a blank line before the 
 [[2]: Linux 内核中文文档翻译规范（补丁发送相关）](https://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git/tree/Documentation/translations/zh_CN/how-to.rst)
 
 [[3]: thunderbird 发送纯文本邮件](https://www.cnblogs.com/darkmatter/p/3606819.html)
+
+[[4]: b4 官方文档](https://b4.docs.kernel.org/)
+
+[[5]: patman 官方文档](https://docs.u-boot.org/en/latest/develop/patman.html)
+
+[[6]: Linux Kernel Submitting Patches（trailer 约定）](https://www.kernel.org/doc/html/latest/process/submitting-patches.html#using-reported-by-tested-by-reviewed-by-suggested-by-and-fixes)
