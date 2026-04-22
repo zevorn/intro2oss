@@ -143,7 +143,7 @@ Result: 250
 
 | Tag | 含义 | 使用场景 |
 | --- | --- | --- |
-| `Signed-off-by:` | 开发者担保（DCO），表示你有权提交此代码 | 必须由作者和每个转发者添加 |
+| `Signed-off-by:` | 开发者源证书担保（Developer Certificate of Origin，简称 DCO），表示你有权提交此代码 | 必须由作者和每个转发者添加 |
 | `Reviewed-by:` | 代码审查者认为该补丁正确 | 审查者 review 通过后在邮件中明确提供 |
 | `Acked-by:` | 维护者/子系统负责人认可合并 | 由相关子系统 maintainer 在回复中提供 |
 | `Tested-by:` | 测试者验证该补丁有效 | 他人测试通过后在邮件中明确提供 |
@@ -220,6 +220,20 @@ b4 prep --check
 # 5) 正式通过 git send-email 发送补丁系列
 b4 send
 ```
+
+!!! tip "如何获取 Message-Id"
+
+    上面多条命令都依赖 `<message-id>`。Message-Id 是每封邮件在 email 头部的唯一标识，
+    形如 `20240101.123456.abc@host`（以下几种获取方式中，使用时一般去掉两侧的 `<>`）。
+    常见的获取方式：
+
+    - **从 lore 页面 URL 中截取**：例如
+      `https://lore.kernel.org/qemu-devel/20240101.123456.abc@host/`，其中
+      `qemu-devel/` 之后、结尾斜杠之前的部分即为 Message-Id。`b4` 也支持直接把整个
+      lore URL 传给它（如 `b4 am https://lore.kernel.org/qemu-devel/.../`），效果等价。
+    - **从邮件原文头部读取**：在 lore 页面点击 `raw` 查看纯文本邮件，或者在邮件客户端里
+      选择“查看源码 / Show source”，在头部字段中找到 `Message-Id:`，尖括号中的内容就是
+      该邮件的 Message-Id。
 
 !!! note "两种使用场景区分"
 
